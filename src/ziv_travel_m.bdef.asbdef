@@ -1,0 +1,92 @@
+managed ;
+strict ( 2 );
+
+define behavior for ZIV_Travel_M alias travel
+implementation in class zbp_iv_travel_m unique
+persistent table ztravel_m
+lock master
+authorization master ( global )
+etag master last_changed_at
+early numbering
+{
+
+  mapping for ZIV_TRAVEL_M corresponding;
+
+  // administrative fields: read only
+  field ( readonly ) last_changed_at, last_changed_by, created_at, created_by;
+
+  // mandatory fields that are required to create a travel
+  field ( mandatory ) agency_id, customer_id, begin_date, end_date, overall_status, booking_fee, currency_code;
+
+  // Semantic Key field, which is readonly for the consumer, value is assigned in early numbering
+  field (readonly) travel_id;
+
+  create;
+  update;
+  delete;
+  association _Booking { create (features:instance); }
+
+  // dynamic action control
+  action  ( features: instance ) acceptTravel result [1] $self;
+  action  ( features: instance ) rejectTravel result [1] $self;
+
+  // instance factory action for copying travel instances
+  factory action copyTravel [1];
+
+  // internal action that is called by determinations
+  internal action ReCalcTotalPrice;
+
+  validation validateCustomer     on save { create; field customer_id; }
+  validation validateAgency       on save { create; field agency_id; }
+  validation validateDates        on save { create; field begin_date, end_date; }
+  validation validateStatus       on save { create; field overall_status; }
+  validation validateCurrencyCode on save { create; field currency_code; }
+}
+
+define behavior for ZIV_Booking_M alias booking
+implementation in class zbp_iv_Booking_M unique
+persistent table zbooking_m
+lock dependent by _Travel
+authorization dependent by _Travel
+etag master last_changed_at
+early numbering
+{
+
+  mapping for ZIV_BOOKING_M corresponding;
+  update;
+  delete;
+
+  association _Travel;
+
+  // static field control
+  field ( mandatory ) carrier_id, connection_id, flight_date, booking_status;
+  field ( readonly ) travel_id, booking_id;
+
+  // Fields that are mandatory for create but should be read-only afterwards
+  field ( mandatory : create, readonly : update) booking_date, customer_id;
+
+  // dynamic operation control
+  association _BookSupplement { create (features:instance); }
+
+  validation validateStatus       on save { create; field booking_status; }
+  validation validateCurrencyCode on save { create; field currency_code;  }
+
+
+}
+
+define behavior for ZIV_BookSuppl_M alias bookingsuppl
+implementation in class zbp_iv_BookSuppl_M unique
+persistent table zbooksuppl_m
+lock dependent by _Travel
+authorization dependent by _Travel
+etag master last_changed_at
+early numbering
+{
+  update;
+  delete;
+  // static field control
+  field ( mandatory ) price,supplement_id;
+  field ( readonly ) travel_id, booking_id, booking_supplement_id;
+  association _Travel;
+  association _Booking;
+}
