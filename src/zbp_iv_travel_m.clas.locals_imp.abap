@@ -34,6 +34,8 @@ CLASS lhc_travel DEFINITION INHERITING FROM cl_abap_behavior_handler.
 
     METHODS validatestatus FOR VALIDATE ON SAVE
       IMPORTING keys FOR travel~validatestatus.
+    METHODS calculatetotalprice FOR DETERMINE ON MODIFY
+      IMPORTING keys FOR travel~calculatetotalprice.
 
 ENDCLASS.
 
@@ -299,7 +301,7 @@ CLASS lhc_travel IMPLEMENTATION.
 
   METHOD ReCalcTotalPrice.
 
- TYPES: BEGIN OF ty_amount_per_currencycode,
+    TYPES: BEGIN OF ty_amount_per_currencycode,
              amount        TYPE /dmo/total_price,
              currency_code TYPE /dmo/currency_code,
            END OF ty_amount_per_currencycode.
@@ -402,18 +404,406 @@ CLASS lhc_travel IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD validateAgency.
+    " Read relevant travel instance data
+    READ ENTITIES OF ziv_Travel_M IN LOCAL MODE
+    ENTITY travel
+     FIELDS ( agency_id )
+     WITH CORRESPONDING #(  keys )
+    RESULT DATA(travels).
+
+    DATA agency TYPE SORTED TABLE OF /dmo/agency WITH UNIQUE KEY agency_id.
+
+    " Optimization of DB select: extract distinct non-initial customer IDs
+    agency = CORRESPONDING #( travels DISCARDING DUPLICATES MAPPING agency_id = agency_id EXCEPT * ).
+    DELETE agency WHERE agency_id IS INITIAL.
+    IF agency IS NOT INITIAL.
+
+      " Check if customer ID exists
+      SELECT FROM /dmo/agency FIELDS agency_id
+        FOR ALL ENTRIES IN @agency
+        WHERE agency_id = @agency-agency_id
+        INTO TABLE @DATA(agency_db).
+    ENDIF.
+    " Raise msg for non existing and initial customer id
+    LOOP AT travels INTO DATA(travel).
+      IF travel-agency_id IS INITIAL
+         OR NOT line_exists( agency_db[ agency_id = travel-agency_id ] ).
+
+        APPEND VALUE #(  %tky = travel-%tky ) TO failed-travel.
+        APPEND VALUE #(  %tky = travel-%tky
+                         %msg      = NEW /dmo/cm_flight_messages(
+                                         customer_id = travel-agency_id
+                                         textid      = /dmo/cm_flight_messages=>agency_unkown
+                                         severity    = if_abap_behv_message=>severity-error )
+                         %element-customer_id = if_abap_behv=>mk-on
+                      ) TO reported-travel.
+      ENDIF.
+    ENDLOOP.
   ENDMETHOD.
 
   METHOD validateCurrencyCode.
+    READ ENTITIES OF ziv_Travel_M IN LOCAL MODE
+        ENTITY travel
+          FIELDS ( currency_code )
+          WITH CORRESPONDING #( keys )
+        RESULT DATA(travels).
+
+    DATA: currencies TYPE SORTED TABLE OF I_Currency WITH UNIQUE KEY currency.
+
+    currencies = CORRESPONDING #(  travels DISCARDING DUPLICATES MAPPING currency = currency_code EXCEPT * ).
+    DELETE currencies WHERE currency IS INITIAL.
+
+    IF currencies IS NOT INITIAL.
+      SELECT FROM I_Currency FIELDS currency
+        FOR ALL ENTRIES IN @currencies
+        WHERE currency = @currencies-currency
+        INTO TABLE @DATA(currency_db).
+    ENDIF.
+
+
+    LOOP AT travels INTO DATA(travel).
+      IF travel-currency_code IS INITIAL.
+        " Raise message for empty Currency
+        APPEND VALUE #( %tky                   = travel-%tky ) TO failed-travel.
+        APPEND VALUE #( %tky                   = travel-%tky
+                        %msg                   = NEW /dmo/cm_flight_messages(
+                                                        textid    = /dmo/cm_flight_messages=>agency_unkown
+                                                        severity  = if_abap_behv_message=>severity-error )
+                        %element-currency_code = if_abap_behv=>mk-on
+                      ) TO reported-travel.
+      ELSEIF NOT line_exists( currency_db[ currency = travel-currency_code ] ).
+        " Raise message for not existing Currency
+        APPEND VALUE #( %tky                   = travel-%tky ) TO failed-travel.
+        APPEND VALUE #( %tky                   = travel-%tky
+                        %msg                   = NEW /dmo/cm_flight_messages(
+                                                        textid        = /dmo/cm_flight_messages=>agency_unkown
+                                                        severity      = if_abap_behv_message=>severity-error
+                                                        currency_code = travel-currency_code )
+                        %element-currency_code = if_abap_behv=>mk-on
+                      ) TO reported-travel.
+      ENDIF.
+    ENDLOOP.
   ENDMETHOD.
 
   METHOD validateCustomer.
+    " Read relevant travel instance data
+    READ ENTITIES OF ziv_Travel_M IN LOCAL MODE
+    ENTITY travel
+     FIELDS ( customer_id )
+     WITH CORRESPONDING #(  keys )
+    RESULT DATA(travels).
+
+    DATA customers TYPE SORTED TABLE OF /dmo/customer WITH UNIQUE KEY customer_id.
+
+    " Optimization of DB select: extract distinct non-initial customer IDs
+    customers = CORRESPONDING #( travels DISCARDING DUPLICATES MAPPING customer_id = customer_id EXCEPT * ).
+    DELETE customers WHERE customer_id IS INITIAL.
+    IF customers IS NOT INITIAL.
+
+      " Check if customer ID exists
+      SELECT FROM /dmo/customer FIELDS customer_id
+        FOR ALL ENTRIES IN @customers
+        WHERE customer_id = @customers-customer_id
+        INTO TABLE @DATA(customers_db).
+    ENDIF.
+    " Raise msg for non existing and initial customer id
+    LOOP AT travels INTO DATA(travel).
+      IF travel-customer_id IS INITIAL
+         OR NOT line_exists( customers_db[ customer_id = travel-customer_id ] ).
+
+        APPEND VALUE #(  %tky = travel-%tky ) TO failed-travel.
+        APPEND VALUE #(  %tky = travel-%tky
+                         %msg      = NEW /dmo/cm_flight_messages(
+                                         customer_id = travel-customer_id
+                                         textid      = /dmo/cm_flight_messages=>customer_unkown
+                                         severity    = if_abap_behv_message=>severity-error )
+                         %element-customer_id = if_abap_behv=>mk-on
+                      ) TO reported-travel.
+      ENDIF.
+    ENDLOOP.
   ENDMETHOD.
 
   METHOD validateDates.
+    READ ENTITIES OF ziv_Travel_M IN LOCAL MODE
+        ENTITY travel
+          FIELDS ( begin_date end_date )
+          WITH CORRESPONDING #( keys )
+        RESULT DATA(travels).
+
+    LOOP AT travels INTO DATA(travel).
+
+      IF travel-end_date < travel-begin_date.  "end_date before begin_date
+
+        APPEND VALUE #( %tky = travel-%tky ) TO failed-travel.
+
+        APPEND VALUE #( %tky = travel-%tky
+                        %msg = NEW /dmo/cm_flight_messages(
+                                   textid     = /dmo/cm_flight_messages=>begin_date_bef_end_date
+                                   severity   = if_abap_behv_message=>severity-error
+                                   begin_date = travel-begin_date
+                                   end_date   = travel-end_date
+                                   travel_id  = travel-travel_id )
+                        %element-begin_date   = if_abap_behv=>mk-on
+                        %element-end_date     = if_abap_behv=>mk-on
+                     ) TO reported-travel.
+
+      ELSEIF travel-begin_date < cl_abap_context_info=>get_system_date( ).  "begin_date must be in the future
+
+        APPEND VALUE #( %tky        = travel-%tky ) TO failed-travel.
+
+        APPEND VALUE #( %tky = travel-%tky
+                        %msg = NEW /dmo/cm_flight_messages(
+                                    textid   = /dmo/cm_flight_messages=>begin_date_on_or_bef_sysdate
+                                    severity = if_abap_behv_message=>severity-error )
+                        %element-begin_date  = if_abap_behv=>mk-on
+                        %element-end_date    = if_abap_behv=>mk-on
+                      ) TO reported-travel.
+      ENDIF.
+
+    ENDLOOP.
   ENDMETHOD.
 
   METHOD validateStatus.
+
+    READ ENTITIES OF ziv_Travel_M IN LOCAL MODE
+        ENTITY travel
+          FIELDS ( overall_status )
+          WITH CORRESPONDING #( keys )
+        RESULT DATA(travels).
+
+    LOOP AT travels INTO DATA(travel).
+      CASE travel-overall_status.
+        WHEN 'O'.  " Open
+        WHEN 'X'.  " Cancelled
+        WHEN 'A'.  " Accepted
+
+        WHEN OTHERS.
+          APPEND VALUE #( %tky = travel-%tky ) TO failed-travel.
+
+          APPEND VALUE #( %tky = travel-%tky
+                          %msg = NEW /dmo/cm_flight_messages(
+                                     textid = /dmo/cm_flight_messages=>status_invalid
+                                     severity = if_abap_behv_message=>severity-error
+                                     status = travel-overall_status )
+                          %element-overall_status = if_abap_behv=>mk-on
+                        ) TO reported-travel.
+      ENDCASE.
+
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD calculateTotalPrice.
+    MODIFY ENTITIES OF ziv_Travel_M IN LOCAL MODE
+        ENTITY travel
+          EXECUTE recalctotalprice
+          FROM CORRESPONDING #( keys ).
+  ENDMETHOD.
+
+ENDCLASS.
+
+
+CLASS lcl_save DEFINITION INHERITING FROM cl_abap_behavior_saver.
+
+  PROTECTED SECTION.
+    METHODS save_modified REDEFINITION.
+
+ENDCLASS.
+
+
+CLASS lcl_save IMPLEMENTATION.
+
+  METHOD save_modified.
+
+    DATA travel_log        TYPE STANDARD TABLE OF zlog_travel.
+    DATA travel_log_create TYPE STANDARD TABLE OF zlog_travel.
+    DATA travel_log_update TYPE STANDARD TABLE OF zlog_travel.
+
+    " (1) Get instance data of all instances that have been created
+    IF create-travel IS NOT INITIAL.
+      " Creates internal table with instance data
+      travel_log = CORRESPONDING #( create-travel ).
+
+      LOOP AT travel_log ASSIGNING FIELD-SYMBOL(<travel_log>).
+        <travel_log>-changing_operation = 'CREATE'.
+
+        " Generate time stamp
+        GET TIME STAMP FIELD <travel_log>-created_at.
+
+        " Read travel instance data into ls_travel that includes %control structure
+        READ TABLE create-travel WITH TABLE KEY entity COMPONENTS travel_id = <travel_log>-travel_id INTO DATA(travel).
+        IF sy-subrc = 0.
+
+          " If new value of the booking_fee field created
+          IF travel-%control-booking_fee = cl_abap_behv=>flag_changed.
+            " Generate uuid as value of the change_id field
+            TRY.
+                <travel_log>-change_id = cl_system_uuid=>create_uuid_x16_static( ) .
+              CATCH cx_uuid_error.
+                "handle exception
+            ENDTRY.
+            <travel_log>-changed_field_name = 'booking_fee'.
+            <travel_log>-changed_value = travel-booking_fee.
+            APPEND <travel_log> TO travel_log_create.
+          ENDIF.
+
+          " If new value of the overall_status field created
+          IF travel-%control-overall_status = cl_abap_behv=>flag_changed.
+            " Generate uuid as value of the change_id field
+            TRY.
+                <travel_log>-change_id = cl_system_uuid=>create_uuid_x16_static( ) .
+              CATCH cx_uuid_error.
+                "handle exception
+            ENDTRY.
+            <travel_log>-changed_field_name = 'overall_status'.
+            <travel_log>-changed_value = travel-overall_status.
+            APPEND <travel_log> TO travel_log_create.
+          ENDIF.
+
+          " IF  ls_travel-%control-...
+
+        ENDIF.
+
+      ENDLOOP.
+
+      " Inserts rows specified in lt_travel_log_c into the DB table /dmo/log_travel
+      INSERT zlog_travel FROM TABLE @travel_log_create.
+
+    ENDIF.
+
+
+    " (2) Get instance data of all instances that have been updated during the transaction
+    IF update-travel IS NOT INITIAL.
+      travel_log = CORRESPONDING #( update-travel ).
+
+      LOOP AT update-travel ASSIGNING FIELD-SYMBOL(<travel_log_update>).
+
+        ASSIGN travel_log[ travel_id = <travel_log_update>-travel_id ] TO FIELD-SYMBOL(<travel_log_db>).
+
+        <travel_log_db>-changing_operation = 'UPDATE'.
+
+        " Generate time stamp
+        GET TIME STAMP FIELD <travel_log_db>-created_at.
+
+
+        IF <travel_log_update>-%control-customer_id = if_abap_behv=>mk-on.
+          <travel_log_db>-changed_value = <travel_log_update>-customer_id.
+          " Generate uuid as value of the change_id field
+          TRY.
+              <travel_log_db>-change_id = cl_system_uuid=>create_uuid_x16_static( ) .
+            CATCH cx_uuid_error.
+              "handle exception
+          ENDTRY.
+
+          <travel_log_db>-changed_field_name = 'customer_id'.
+
+          APPEND <travel_log_db> TO travel_log_update.
+
+        ENDIF.
+
+        IF <travel_log_update>-%control-description = if_abap_behv=>mk-on.
+          <travel_log_db>-changed_value = <travel_log_update>-description.
+
+          " Generate uuid as value of the change_id field
+          TRY.
+              <travel_log_db>-change_id = cl_system_uuid=>create_uuid_x16_static( ) .
+            CATCH cx_uuid_error.
+              "handle exception
+          ENDTRY.
+
+          <travel_log_db>-changed_field_name = 'description'.
+
+          APPEND <travel_log_db> TO travel_log_update.
+
+        ENDIF.
+
+        "IF <fs_travel_log_u>-%control-...
+
+      ENDLOOP.
+
+
+      " Inserts rows specified in lt_travel_log_u into the DB table /dmo/log_travel
+      INSERT zlog_travel FROM TABLE @travel_log_update.
+
+    ENDIF.
+
+    " (3) Get keys of all travel instances that have been deleted during the transaction
+    IF delete-travel IS NOT INITIAL.
+      travel_log = CORRESPONDING #( delete-travel ).
+      LOOP AT travel_log ASSIGNING FIELD-SYMBOL(<travel_log_delete>).
+        <travel_log_delete>-changing_operation = 'DELETE'.
+        " Generate time stamp
+        GET TIME STAMP FIELD <travel_log_delete>-created_at.
+        " Generate uuid as value of the change_id field
+        TRY.
+            <travel_log_delete>-change_id = cl_system_uuid=>create_uuid_x16_static( ) .
+          CATCH cx_uuid_error.
+            "handle exception
+        ENDTRY.
+
+      ENDLOOP.
+
+      " Inserts rows specified in lt_travel_log into the DB table /dmo/log_travel
+      INSERT zlog_travel FROM TABLE @travel_log.
+
+    ENDIF.
+
+********************************************************************************
+*
+* Implements unmanaged save
+*
+********************************************************************************
+    DATA booksuppls_db TYPE STANDARD TABLE OF zbooksuppl_m.
+    " (1) Get instance data of all instances that have been created
+    IF create-bookingsuppl IS NOT INITIAL.
+      booksuppls_db = CORRESPONDING #( create-bookingsuppl ).
+
+      CALL FUNCTION 'ZFLIGHT_BOOKSUPPL_C' EXPORTING values = booksuppls_db.
+
+    ENDIF.
+
+    " (2) Get instance data of all instances that have been updated during the transaction
+    booksuppls_db = CORRESPONDING #( update-bookingsuppl ).
+    IF booksuppls_db IS NOT INITIAL.
+
+      " Read all field values from database
+      SELECT * FROM zbooksuppl_m FOR ALL ENTRIES IN @booksuppls_db
+               WHERE booking_supplement_id = @booksuppls_db-booking_supplement_id
+               INTO TABLE @booksuppls_db .
+
+      " Take over field values that have been changed during the transaction
+      LOOP AT update-bookingsuppl ASSIGNING FIELD-SYMBOL(<unmanaged_booksuppl>).
+        ASSIGN booksuppls_db[ travel_id  = <unmanaged_booksuppl>-travel_id
+                              booking_id = <unmanaged_booksuppl>-booking_id
+                   booking_supplement_id = <unmanaged_booksuppl>-booking_supplement_id
+                            ] TO FIELD-SYMBOL(<booksuppl_db>).
+
+        IF <unmanaged_booksuppl>-%control-supplement_id = if_abap_behv=>mk-on.
+          <booksuppl_db>-supplement_id = <unmanaged_booksuppl>-supplement_id.
+        ENDIF.
+
+        IF <unmanaged_booksuppl>-%control-price = if_abap_behv=>mk-on.
+          <booksuppl_db>-price = <unmanaged_booksuppl>-price.
+        ENDIF.
+
+        IF <unmanaged_booksuppl>-%control-currency_code = if_abap_behv=>mk-on.
+          <booksuppl_db>-currency_code = <unmanaged_booksuppl>-currency_code.
+        ENDIF.
+
+      ENDLOOP.
+
+      " Update the complete instance data
+      CALL FUNCTION 'ZFLIGHT_BOOKSUPPL_U' EXPORTING values = booksuppls_db.
+
+    ENDIF.
+
+    " (3) Get keys of all travel instances that have been deleted during the transaction
+    IF delete-bookingsuppl IS NOT INITIAL.
+      booksuppls_db = CORRESPONDING #( delete-bookingsuppl ).
+
+      CALL FUNCTION 'ZFLIGHT_BOOKSUPPL_D' EXPORTING values = booksuppls_db.
+
+    ENDIF.
+
   ENDMETHOD.
 
 ENDCLASS.

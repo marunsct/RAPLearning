@@ -1,13 +1,15 @@
-managed ;
+managed implementation in class zbp_iv_travel_m unique;
 strict ( 2 );
 
 define behavior for ZIV_Travel_M alias travel
 implementation in class zbp_iv_travel_m unique
+with additional save
 persistent table ztravel_m
 lock master
 authorization master ( global )
 etag master last_changed_at
 early numbering
+
 {
 
   mapping for ZIV_TRAVEL_M corresponding;
@@ -35,6 +37,8 @@ early numbering
 
   // internal action that is called by determinations
   internal action ReCalcTotalPrice;
+
+  determination calculateTotalPrice on modify {create; field booking_fee, currency_code; }
 
   validation validateCustomer     on save { create; field customer_id; }
   validation validateAgency       on save { create; field agency_id; }
@@ -71,12 +75,15 @@ early numbering
   validation validateStatus       on save { create; field booking_status; }
   validation validateCurrencyCode on save { create; field currency_code;  }
 
+  // determination for calculation of total flight price
+  determination calculateTotalPrice on modify { create;  field flight_price, currency_code; }
 
 }
 
 define behavior for ZIV_BookSuppl_M alias bookingsuppl
 implementation in class zbp_iv_BookSuppl_M unique
-persistent table zbooksuppl_m
+with unmanaged save
+//persistent table zbooksuppl_m
 lock dependent by _Travel
 authorization dependent by _Travel
 etag master last_changed_at
@@ -89,4 +96,8 @@ early numbering
   field ( readonly ) travel_id, booking_id, booking_supplement_id;
   association _Travel;
   association _Booking;
+
+  // determination for calculation of total suppl. price
+  determination calculateTotalPrice on modify {create;   field price, currency_code; }
+
 }

@@ -1,0 +1,62 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<abapGit version="v1.0.0" serializer="LCL_OBJECT_FUGR" serializer_version="v1.0.0">
+ <asx:abap xmlns:asx="http://www.sap.com/abapxml" version="1.0">
+  <asx:values>
+   <AREAT>Travel function group</AREAT>
+   <INCLUDES>
+    <SOBJ_NAME>LZTRAVELTOP</SOBJ_NAME>
+    <SOBJ_NAME>SAPLZTRAVEL</SOBJ_NAME>
+   </INCLUDES>
+   <FUNCTIONS>
+    <item>
+     <FUNCNAME>ZFLIGHT_BOOKSUPPL_C</FUNCNAME>
+     <SHORT_TEXT>Create Booking suppliment</SHORT_TEXT>
+     <IMPORT>
+      <RSIMP>
+       <PARAMETER>VALUES</PARAMETER>
+       <TYP>ZTT_BOOKSUPPL_M</TYP>
+      </RSIMP>
+     </IMPORT>
+     <DOCUMENTATION>
+      <RSFDO>
+       <PARAMETER>VALUES</PARAMETER>
+       <KIND>P</KIND>
+      </RSFDO>
+     </DOCUMENTATION>
+    </item>
+    <item>
+     <FUNCNAME>ZFLIGHT_BOOKSUPPL_D</FUNCNAME>
+     <SHORT_TEXT>Booking Supplement Information Delete</SHORT_TEXT>
+     <IMPORT>
+      <RSIMP>
+       <PARAMETER>VALUES</PARAMETER>
+       <TYP>ZTT_BOOKSUPPL_M</TYP>
+      </RSIMP>
+     </IMPORT>
+     <DOCUMENTATION>
+      <RSFDO>
+       <PARAMETER>VALUES</PARAMETER>
+       <KIND>P</KIND>
+      </RSFDO>
+     </DOCUMENTATION>
+    </item>
+    <item>
+     <FUNCNAME>ZFLIGHT_BOOKSUPPL_U</FUNCNAME>
+     <SHORT_TEXT>Booking Supplement Information Update</SHORT_TEXT>
+     <IMPORT>
+      <RSIMP>
+       <PARAMETER>VALUES</PARAMETER>
+       <TYP>ZTT_BOOKSUPPL_M</TYP>
+      </RSIMP>
+     </IMPORT>
+     <DOCUMENTATION>
+      <RSFDO>
+       <PARAMETER>VALUES</PARAMETER>
+       <KIND>P</KIND>
+      </RSFDO>
+     </DOCUMENTATION>
+    </item>
+   </FUNCTIONS>
+  </asx:values>
+ </asx:abap>
+</abapGit>

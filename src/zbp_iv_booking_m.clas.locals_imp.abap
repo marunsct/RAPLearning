@@ -2,33 +2,35 @@ CLASS lhc_travel DEFINITION INHERITING FROM cl_abap_behavior_handler.
   PRIVATE SECTION.
 
     METHODS earlynumbering_cba_booksupplem FOR NUMBERING
-       IMPORTING entities FOR CREATE booking\_booksupplement.
+      IMPORTING entities FOR CREATE booking\_booksupplement.
 
-        METHODS get_features FOR INSTANCE FEATURES
+    METHODS get_features FOR INSTANCE FEATURES
       IMPORTING keys REQUEST requested_features FOR booking RESULT result.
-        METHODS validatecurrencycode FOR VALIDATE ON SAVE
-          IMPORTING keys FOR booking~validatecurrencycode.
+    METHODS validatecurrencycode FOR VALIDATE ON SAVE
+      IMPORTING keys FOR booking~validatecurrencycode.
 
-        METHODS validatestatus FOR VALIDATE ON SAVE
-          IMPORTING keys FOR booking~validatestatus.
+    METHODS validatestatus FOR VALIDATE ON SAVE
+      IMPORTING keys FOR booking~validatestatus.
+    METHODS calculatetotalprice FOR DETERMINE ON MODIFY
+      IMPORTING keys FOR booking~calculatetotalprice.
 
 ENDCLASS.
 
 CLASS lhc_travel IMPLEMENTATION.
- METHOD get_features.
-   READ ENTITIES OF ziv_travel_m IN LOCAL MODE
-      ENTITY booking
-         FIELDS ( booking_id booking_status )
-         WITH CORRESPONDING #( keys )
-      RESULT DATA(bookings)
-      FAILED failed.
+  METHOD get_features.
+    READ ENTITIES OF ziv_travel_m IN LOCAL MODE
+       ENTITY booking
+          FIELDS ( booking_id booking_status )
+          WITH CORRESPONDING #( keys )
+       RESULT DATA(bookings)
+       FAILED failed.
 
     result = VALUE #( FOR booking IN bookings
                        ( %tky                   = booking-%tky
                          %assoc-_booksupplement = COND #( WHEN booking-booking_status = 'B'
                                                           THEN if_abap_behv=>fc-o-disabled ELSE if_abap_behv=>fc-o-enabled  ) ) ).
 
- ENDMETHOD.
+  ENDMETHOD.
 
   METHOD earlynumbering_cba_booksupplem.
     DATA: max_booking_suppl_id TYPE /dmo/booking_supplement_id .
@@ -85,6 +87,44 @@ CLASS lhc_travel IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD validateStatus.
+
+    READ ENTITIES OF ziv_travel_m IN LOCAL MODE
+      ENTITY booking
+        FIELDS ( booking_status )
+        WITH CORRESPONDING #( keys )
+      RESULT DATA(bookings).
+
+    LOOP AT bookings INTO DATA(booking).
+      CASE booking-booking_status.
+        WHEN 'N'.  " New
+        WHEN 'X'.  " Canceled
+        WHEN 'B'.  " Booked
+
+        WHEN OTHERS.
+          APPEND VALUE #( %tky = booking-%tky ) TO failed-booking.
+
+          APPEND VALUE #( %tky = booking-%tky
+                          %msg = NEW /dmo/cm_flight_messages(
+                                     textid = /dmo/cm_flight_messages=>status_invalid
+                                     status = booking-booking_status
+                                     severity = if_abap_behv_message=>severity-error )
+                          %element-booking_status = if_abap_behv=>mk-on
+                          %path = VALUE #( travel-travel_id    = booking-travel_id )
+                        ) TO reported-booking.
+      ENDCASE.
+
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD calculateTotalPrice.
+    DATA: travel_ids TYPE STANDARD TABLE OF ziv_travel_m WITH UNIQUE HASHED KEY key COMPONENTS travel_id.
+
+    travel_ids = CORRESPONDING #( keys DISCARDING DUPLICATES MAPPING travel_id = travel_id ).
+
+    MODIFY ENTITIES OF ziv_Travel_M IN LOCAL MODE
+      ENTITY Travel
+        EXECUTE ReCalcTotalPrice
+        FROM CORRESPONDING #( travel_ids ).
   ENDMETHOD.
 
 ENDCLASS.
