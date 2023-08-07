@@ -1,0 +1,6 @@
+@EndUserText.label: 'Carrier Multi-Inline-Edit Scenario'
+@ObjectModel.leadingEntity.name: 'ZCV_CarriersLockSingleton_S'
+define service ZUI_Carriers_S {
+  expose ZCV_CarriersLockSingleton_S as CarriersLockSingleton;
+  expose ZCV_Carrier_S as Carrier;
+}

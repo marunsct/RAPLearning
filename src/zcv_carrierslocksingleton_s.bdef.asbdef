@@ -1,0 +1,25 @@
+projection;
+strict ( 2 );
+use draft;
+
+define behavior for ZCV_CarriersLockSingleton_S alias CarriersLockSingleton
+{
+
+  use action Edit;
+  use action Activate;
+  use action Discard;
+  use action Resume;
+  use action Prepare;
+
+  use association _Airline { create; with draft; }
+ // field ( suppress ) lastchangedatmax;
+}
+
+define behavior for ZCV_Carrier_S alias Carrier
+use etag
+{
+  use update;
+  use delete;
+
+  use association _CarrierSingleton { with draft; }
+}

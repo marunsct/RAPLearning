@@ -431,10 +431,13 @@ CLASS lhc_travel IMPLEMENTATION.
 
         APPEND VALUE #(  %tky = travel-%tky ) TO failed-travel.
         APPEND VALUE #(  %tky = travel-%tky
-                         %msg      = NEW /dmo/cm_flight_messages(
-                                         customer_id = travel-agency_id
-                                         textid      = /dmo/cm_flight_messages=>agency_unkown
-                                         severity    = if_abap_behv_message=>severity-error )
+                         %msg      = NEW_MESSAGE_WITH_TEXT( text = 'Customer doesnt exists'
+                                                            severity    = if_abap_behv_message=>severity-error )
+
+"                          NEW /dmo/cm_flight_messages(
+ "                                        customer_id = travel-agency_id
+  "                                       textid      = /dmo/cm_flight_messages=>agency_unkown
+   "                                      severity    = if_abap_behv_message=>severity-error )
                          %element-customer_id = if_abap_behv=>mk-on
                       ) TO reported-travel.
       ENDIF.
